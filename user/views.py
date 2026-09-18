@@ -4,10 +4,12 @@ from rest_framework import filters, generics, permissions
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import renderers
 
 from user.models import Follow, Profile
 from user.permissions import IsProfileOwnerOrReadOnly
 from user.serializers import (
+    EmailAuthTokenSerializer,
     FollowerSerializer,
     FollowingSerializer,
     FollowSerializer,
@@ -29,6 +31,9 @@ class RegisterView(generics.CreateAPIView):
 
 class LoginView(ObtainAuthToken):
     """POST /api/users/login/ — {"email": ..., "password": ...} -> {"token": ...}."""
+
+    serializer_class = EmailAuthTokenSerializer
+    renderer_classes = [renderers.BrowsableAPIRenderer, renderers.JSONRenderer]
 
 
 class LogoutView(APIView):
@@ -54,7 +59,10 @@ class MyProfileView(generics.RetrieveUpdateAPIView):
 
     queryset = Profile.objects.select_related("user")
     serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated, IsProfileOwnerOrReadOnly]
+    permission_classes = [
+        permissions.IsAuthenticated,
+        IsProfileOwnerOrReadOnly,
+    ]
 
     def get_object(self):
         return get_object_or_404(Profile, user=self.request.user)

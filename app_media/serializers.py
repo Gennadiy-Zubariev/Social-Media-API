@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from app_media.models import Comment, Hashtag, Like, Post, ScheduledPost
+from app_media.tasks import publish_scheduled_post
 
 
 class HashtagSerializer(serializers.ModelSerializer):
@@ -139,4 +140,8 @@ class ScheduledPostSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data["author"] = self.context["request"].user
-        return super().create(validated_data)
+        scheduled_post = super().create(validated_data)
+        publish_scheduled_post.apply_async(
+            args=[scheduled_post.id], eta=scheduled_post.publish_at
+        )
+        return scheduled_post
