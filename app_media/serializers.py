@@ -1,10 +1,8 @@
 import re
 
-from django.utils import timezone
 from rest_framework import serializers
 
-from app_media.models import Comment, Hashtag, Like, Post, ScheduledPost
-from app_media.tasks import publish_scheduled_post
+from app_media.models import Comment, Hashtag, Post, ScheduledPost
 
 
 class HashtagSerializer(serializers.ModelSerializer):
