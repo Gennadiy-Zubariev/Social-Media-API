@@ -1,128 +1,148 @@
 from django.contrib.auth import get_user_model
-from django.shortcuts import get_object_or_404
-from rest_framework import filters, generics, permissions
-from rest_framework.authtoken.views import ObtainAuthToken
+from django.db.models import Count
+from rest_framework import mixins, status, viewsets
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework import renderers
 
 from user.models import Follow, Profile
-from user.permissions import IsProfileOwnerOrReadOnly
+from user.permissions import IsOwnerOrReadOnly
 from user.serializers import (
-    EmailAuthTokenSerializer,
-    FollowerSerializer,
-    FollowingSerializer,
     FollowSerializer,
+    LoginSerializer,
+    ProfileDetailSerializer,
     ProfileListSerializer,
-    ProfileSerializer,
-    UserSerializer,
+    UserRegisterSerializer,
 )
 
 User = get_user_model()
 
 
-class RegisterView(generics.CreateAPIView):
-    """POST /api/users/register/ — публічна реєстрація нового користувача."""
+class AuthViewSet(viewsets.GenericViewSet):
+    """
+    Аутентифікація через Token.
 
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [permissions.AllowAny]
+    Endpoints:
+        POST /api/user/auth/register/  — реєстрація, повертає токен
+        POST /api/user/auth/login/     — логін, повертає токен
+        POST /api/user/auth/logout/    — видаляє токен
 
+    register та login доступні всім (AllowAny),
+    logout — тільки автентифікованим (перевизначено на action).
+    """
 
-class LoginView(ObtainAuthToken):
-    """POST /api/users/login/ — {"email": ..., "password": ...} -> {"token": ...}."""
+    permission_classes = [AllowAny]
 
-    serializer_class = EmailAuthTokenSerializer
-    renderer_classes = [renderers.BrowsableAPIRenderer, renderers.JSONRenderer]
+    def get_serializer_class(self):
+        if self.action == "register":
+            return UserRegisterSerializer
+        if self.action == "login":
+            return LoginSerializer
+        return None
 
+    @action(detail=False, methods=["post"])
+    def register(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response(
+            {"token": token.key, "email": user.email},
+            status=status.HTTP_201_CREATED,
+        )
 
-class LogoutView(APIView):
-    """POST /api/users/logout/ — анулює токен поточного користувача."""
+    @action(detail=False, methods=["post"])
+    def login(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({"token": token.key})
 
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated],
+    )
+    def logout(self, request):
         request.user.auth_token.delete()
-        return Response(status=204)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class ProfileCreateView(generics.CreateAPIView):
-    """POST /api/users/profiles/ — створити свій профіль (один раз)."""
+class ProfileViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Профілі користувачів.
 
-    queryset = Profile.objects.all()
-    serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    Endpoints:
+        GET   /api/user/profiles/          — список (з пошуком ?nickname=...)
+        GET   /api/user/profiles/{id}/     — деталі одного профілю
+        PUT   /api/user/profiles/{id}/     — оновити (тільки власник)
+        PATCH /api/user/profiles/{id}/     — часткове оновлення
 
+    Без CreateModelMixin — профіль створюється автоматично через сигнал.
+    Без DestroyModelMixin — профіль видаляється каскадно з User.
+    """
 
-class MyProfileView(generics.RetrieveUpdateAPIView):
-    """GET/PUT/PATCH /api/users/profiles/me/ — власний профіль."""
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
-    queryset = Profile.objects.select_related("user")
-    serializer_class = ProfileSerializer
-    permission_classes = [
-        permissions.IsAuthenticated,
-        IsProfileOwnerOrReadOnly,
-    ]
-
-    def get_object(self):
-        return get_object_or_404(Profile, user=self.request.user)
-
-
-class ProfileDetailView(generics.RetrieveAPIView):
-    """GET /api/users/profiles/<pk>/ — перегляд чужого профілю."""
-
-    queryset = Profile.objects.select_related("user")
-    serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-
-class ProfileListView(generics.ListAPIView):
-    """GET /api/users/profiles/search/?search=... — пошук профілів за нікнеймом."""
-
-    queryset = Profile.objects.select_related("user")
-    serializer_class = ProfileListSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [filters.SearchFilter]
-    search_fields = ["nickname", "user__email"]
-
-
-class FollowCreateView(generics.CreateAPIView):
-    """POST /api/users/follows/ — {"following": <id>} підписатись на юзера."""
-
-    queryset = Follow.objects.all()
-    serializer_class = FollowSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-
-class FollowDestroyView(generics.DestroyAPIView):
-    """DELETE /api/users/follows/<pk>/ — відписатись (pk запису Follow)."""
-
-    serializer_class = FollowSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    def get_serializer_class(self):
+        if self.action == "list":
+            return ProfileListSerializer
+        return ProfileDetailSerializer
 
     def get_queryset(self):
-        return Follow.objects.filter(follower=self.request.user)
+        queryset = Profile.objects.select_related("user").annotate(
+            followers_count=Count("user__followers"),
+            following_count=Count("user__following"),
+        )
+
+        nickname = self.request.query_params.get("nickname")
+        if nickname:
+            queryset = queryset.filter(nickname__icontains=nickname)
+
+        return queryset
 
 
-class MyFollowersListView(generics.ListAPIView):
-    """GET /api/users/follows/followers/ — хто підписаний на мене."""
+class FollowViewSet(
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Підписки.
 
-    serializer_class = FollowerSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    Endpoints:
+        GET    /api/user/follows/            — на кого я підписаний
+        POST   /api/user/follows/            — підписатися (передати following: user_id)
+        DELETE /api/user/follows/{id}/       — відписатися
+        GET    /api/user/follows/followers/   — хто підписаний на мене
 
-    def get_queryset(self):
-        return Follow.objects.filter(
-            following=self.request.user
-        ).select_related("follower__profile")
+    perform_create автоматично підставляє follower = request.user,
+    щоб юзер не міг створити підписку від чужого імені.
+    """
 
-
-class MyFollowingListView(generics.ListAPIView):
-    """GET /api/users/follows/following/ — на кого підписаний я."""
-
-    serializer_class = FollowingSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
+    serializer_class = FollowSerializer
 
     def get_queryset(self):
         return Follow.objects.filter(
             follower=self.request.user
-        ).select_related("following__profile")
+        ).select_related("follower", "following")
+
+    def perform_create(self, serializer):
+        serializer.save(follower=self.request.user)
+
+    @action(detail=False, methods=["get"])
+    def followers(self, request):
+        followers = Follow.objects.filter(
+            following=request.user
+        ).select_related("follower")
+        serializer = self.get_serializer(followers, many=True)
+        return Response(serializer.data)

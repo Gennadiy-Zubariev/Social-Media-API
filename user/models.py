@@ -69,7 +69,9 @@ class Profile(models.Model):
         on_delete=models.CASCADE,
         related_name="profile",
     )
-    nickname = models.CharField(max_length=255, unique=True)
+    nickname = models.CharField(
+        max_length=255, unique=True, null=True, blank=True
+    )
     gender = models.CharField(
         choices=GenderChoice.choices, null=True, blank=True
     )
@@ -78,7 +80,7 @@ class Profile(models.Model):
     photo = models.ImageField(upload_to="profiles/", null=True, blank=True)
 
     @property
-    def get_age(self):
+    def age(self):
         if not self.date_of_birth:
             return None
         today = datetime.date.today()
@@ -90,7 +92,7 @@ class Profile(models.Model):
         )
 
     def __str__(self):
-        return self.nickname
+        return self.nickname or self.user.email
 
 
 class Follow(models.Model):
