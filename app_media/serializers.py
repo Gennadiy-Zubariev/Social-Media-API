@@ -1,3 +1,5 @@
+import re
+
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -13,115 +15,117 @@ class HashtagSerializer(serializers.ModelSerializer):
 
 class CommentSerializer(serializers.ModelSerializer):
     author = serializers.CharField(source="author.email", read_only=True)
+    post = serializers.CharField(source="post.author", read_only=True)
 
     class Meta:
         model = Comment
-        fields = ("id", "post", "author", "content", "created_at", "updated_at")
-        read_only_fields = ("id", "post", "author", "created_at", "updated_at")
+        fields = (
+            "id",
+            "post",
+            "author",
+            "content",
+            "created_at",
+            "updated_at",
+        )
 
-    def create(self, validated_data):
-        validated_data["author"] = self.context["request"].user
-        validated_data["post"] = self.context["post"]
-        return super().create(validated_data)
 
+class PostListSerializer(serializers.ModelSerializer):
 
-class PostSerializer(serializers.ModelSerializer):
-    author = serializers.CharField(source="author.email", read_only=True)
-    hashtag = HashtagSerializer(many=True, read_only=True)
-    hashtags = serializers.ListField(
-        child=serializers.CharField(max_length=255),
-        write_only=True,
-        required=False,
+    author = serializers.CharField(
+        source="author.email",
+        read_only=True,
     )
-    comments_count = serializers.IntegerField(
-        source="comments.count", read_only=True
+    hashtags = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field="name",
     )
-    likes_count = serializers.IntegerField(source="likes.count", read_only=True)
-    is_liked = serializers.SerializerMethodField()
+    likes_count = serializers.IntegerField(read_only=True)
+    comments_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Post
-        fields = (
+        fields = [
             "id",
             "author",
             "content",
             "image",
-            "hashtag",
             "hashtags",
+            "likes_count",
             "comments_count",
+            "created_at",
+        ]
+
+
+class PostDetailSerializer(serializers.ModelSerializer):
+    author = serializers.CharField(source="author.email", read_only=True)
+    hashtags = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field="name",
+    )
+    comments = CommentSerializer(many=True, read_only=True)
+    likes_count = serializers.IntegerField(read_only=True)
+    is_liked = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Post
+        fields = [
+            "id",
+            "author",
+            "content",
+            "image",
+            "hashtags",
+            "comments",
             "likes_count",
             "is_liked",
             "created_at",
             "updated_at",
-        )
-        read_only_fields = ("id", "author", "created_at", "updated_at")
+        ]
 
-    def get_is_liked(self, obj):
-        request = self.context.get("request")
-        if not request or not request.user.is_authenticated:
-            return False
-        return obj.likes.filter(user=request.user).exists()
+
+class PostCreateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Post
+        fields = [
+            "id",
+            "content",
+            "image",
+        ]
+
+    def _parse_hashtags(self, content):
+        return re.findall(r"#(\w+)", content.lower())
 
     def create(self, validated_data):
-        hashtag_names = validated_data.pop("hashtags", [])
-        validated_data["author"] = self.context["request"].user
-        post = super().create(validated_data)
-        self._set_hashtags(post, hashtag_names)
+        post = Post.objects.create(**validated_data)
+        tag_names = self._parse_hashtags(post.content)
+        for name in tag_names:
+            tag, _ = Hashtag.objects.get_or_create(name=name)
+            post.hashtags.add(tag)
         return post
 
     def update(self, instance, validated_data):
-        hashtag_names = validated_data.pop("hashtags", None)
-        post = super().update(instance, validated_data)
-        if hashtag_names is not None:
-            self._set_hashtags(post, hashtag_names)
-        return post
-
-    @staticmethod
-    def _set_hashtags(post, names):
-        if not names:
-            return
-        hashtags = [
-            Hashtag.objects.get_or_create(name=name.lower().strip("#"))[0]
-            for name in names
-        ]
-        post.hashtag.set(hashtags)
-
-
-class PostListSerializer(PostSerializer):
-    class Meta(PostSerializer.Meta):
-        fields = (
-            "id",
-            "author",
-            "content",
-            "image",
-            "hashtag",
-            "comments_count",
-            "likes_count",
-            "is_liked",
-            "created_at",
-        )
-
-
-class LikeSerializer(serializers.ModelSerializer):
-    user = serializers.CharField(source="user.email", read_only=True)
-
-    class Meta:
-        model = Like
-        fields = ("id", "post", "user", "created_at")
-        read_only_fields = ("id", "post", "user", "created_at")
-
-    def create(self, validated_data):
-        validated_data["user"] = self.context["request"].user
-        validated_data["post"] = self.context["post"]
-        return super().create(validated_data)
+        instance = super().update(instance, validated_data)
+        if "content" in validated_data:
+            instance.hashtags.clear()
+            tag_names = self._parse_hashtags(instance.content)
+            for name in tag_names:
+                tag, _ = Hashtag.objects.get_or_create(name=name)
+                instance.hashtags.add(tag)
+        return instance
 
 
 class ScheduledPostSerializer(serializers.ModelSerializer):
-    author = serializers.CharField(source="author.email", read_only=True)
+
+    author = serializers.CharField(
+        source="author.email",
+        read_only=True,
+    )
 
     class Meta:
         model = ScheduledPost
-        fields = (
+        fields = [
             "id",
             "author",
             "content",
@@ -130,18 +134,14 @@ class ScheduledPostSerializer(serializers.ModelSerializer):
             "publish_at",
             "is_published",
             "created_at",
-        )
-        read_only_fields = ("id", "author", "is_published", "created_at")
+        ]
+        read_only_fields = ["is_published"]
 
     def validate_publish_at(self, value):
-        if value <= timezone.now():
-            raise serializers.ValidationError("publish_at must be in the future.")
-        return value
+        from django.utils import timezone
 
-    def create(self, validated_data):
-        validated_data["author"] = self.context["request"].user
-        scheduled_post = super().create(validated_data)
-        publish_scheduled_post.apply_async(
-            args=[scheduled_post.id], eta=scheduled_post.publish_at
-        )
-        return scheduled_post
+        if value <= timezone.now():
+            raise serializers.ValidationError(
+                "Publish time must be in the future."
+            )
+        return value

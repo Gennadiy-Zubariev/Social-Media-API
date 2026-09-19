@@ -21,7 +21,9 @@ class Post(models.Model):
     )
     content = models.TextField()
     image = models.ImageField(upload_to="post_images/", null=True, blank=True)
-    hashtag = models.ManyToManyField(Hashtag, related_name="posts", blank=True)
+    hashtags = models.ManyToManyField(
+        Hashtag, related_name="posts", blank=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

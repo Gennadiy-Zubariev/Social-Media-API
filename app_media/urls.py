@@ -1,41 +1,22 @@
-from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+from rest_framework_nested.routers import NestedDefaultRouter
 
 from app_media.views import (
-    CommentDetailView,
-    FeedListView,
-    HashtagListView,
-    LikedPostsListView,
-    PostCommentListCreateView,
-    PostLikeView,
+    CommentViewSet,
+    LikedPostsViewSet,
     PostViewSet,
     ScheduledPostViewSet,
 )
 
-app_name = "app_media"
-
 router = DefaultRouter()
 router.register("posts", PostViewSet, basename="post")
-router.register(
-    "scheduled-posts", ScheduledPostViewSet, basename="scheduled-post"
-)
+router.register("liked", LikedPostsViewSet, basename="liked")
+router.register("scheduled", ScheduledPostViewSet, basename="scheduled")
 
-urlpatterns = [
-    path("hashtags/", HashtagListView.as_view(), name="hashtag-list"),
-    path("posts/feed/", FeedListView.as_view(), name="post-feed"),
-    path("posts/liked/", LikedPostsListView.as_view(), name="post-liked"),
-    path(
-        "posts/<int:post_pk>/like/",
-        PostLikeView.as_view(),
-        name="post-like",
-    ),
-    path(
-        "posts/<int:post_pk>/comments/",
-        PostCommentListCreateView.as_view(),
-        name="post-comments",
-    ),
-    path(
-        "comments/<int:pk>/", CommentDetailView.as_view(), name="comment-detail"
-    ),
-    path("", include(router.urls)),
-]
+# /api/posts/{post_pk}/comments/
+posts_router = NestedDefaultRouter(router, "posts", lookup="post")
+posts_router.register("comments", CommentViewSet, basename="post-comments")
+
+urlpatterns = router.urls + posts_router.urls
+
+app_name = "app_media"
