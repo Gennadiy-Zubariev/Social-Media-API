@@ -6,7 +6,7 @@ from django.contrib.auth.models import (
     UserManager as DjangoUserManager,
 )
 from django.db import models
-from django.db.models.constraints import UniqueConstraint
+from django.db.models.constraints import UniqueConstraint, CheckConstraint
 
 
 class UserManager(DjangoUserManager):
@@ -70,10 +70,12 @@ class Profile(models.Model):
         related_name="profile",
     )
     nickname = models.CharField(max_length=255, unique=True)
-    gender = models.CharField(choices=GenderChoice, null=True, blank=True)
+    gender = models.CharField(
+        choices=GenderChoice.choices, null=True, blank=True
+    )
     date_of_birth = models.DateField(blank=True, null=True)
     bio = models.TextField(blank=True, default="")
-    photo = models.ImageField(upload_to="profiles/")
+    photo = models.ImageField(upload_to="profiles/", null=True, blank=True)
 
     @property
     def get_age(self):
@@ -109,7 +111,11 @@ class Follow(models.Model):
             UniqueConstraint(
                 fields=["follower_id", "following_id"],
                 name="unique_following",
-            )
+            ),
+            CheckConstraint(
+                check=~models.Q(follower=models.F("following")),
+                name="prevent_self_follow",
+            ),
         ]
 
     def __str__(self):
