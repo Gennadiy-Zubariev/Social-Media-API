@@ -6,6 +6,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -178,14 +179,14 @@ class CommentViewSet(
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Comment.objects.none()
-        return Comment.objects.filter(
-            post_id=self.kwargs["post_pk"]
-        ).select_related("author")
+        post = get_object_or_404(Post, pk=self.kwargs["post_pk"])
+        return Comment.objects.filter(post=post).select_related("author")
 
     def perform_create(self, serializer):
+        post = get_object_or_404(Post, pk=self.kwargs["post_pk"])
         serializer.save(
             author=self.request.user,
-            post_id=self.kwargs["post_pk"],
+            post=post,
         )
 
 
