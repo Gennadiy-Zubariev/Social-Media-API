@@ -185,14 +185,14 @@ class ProfileViewSet(
             )
 
         if request.method == "GET":
-            serializer = ProfileDetailSerializer(profile)
+            serializer = self.get_serializer(profile)
             return Response(serializer.data)
 
         if request.method == "DELETE":
             profile.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        serializer = ProfileDetailSerializer(
+        serializer = self.get_serializer(
             profile,
             data=request.data,
             partial=request.method == "PATCH",
@@ -216,7 +216,7 @@ class ProfileViewSet(
                 {"error": "Profile already exists."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        serializer = ProfileDetailSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
