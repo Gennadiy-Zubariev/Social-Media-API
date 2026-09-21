@@ -1,3 +1,5 @@
+import datetime
+
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
@@ -67,7 +69,7 @@ class ProfileListSerializer(serializers.ModelSerializer):
 
 
 class ProfileDetailSerializer(ProfileListSerializer):
-    age = serializers.IntegerField(source="profile.get_age")
+    age = serializers.IntegerField(read_only=True)
     username = serializers.CharField(
         source="user.username",
         read_only=True,
@@ -90,6 +92,13 @@ class ProfileDetailSerializer(ProfileListSerializer):
             "followers_count",
             "following_count",
         ]
+
+    def validate_date_of_birth(self, value):
+        if value > datetime.date.today():
+            raise serializers.ValidationError(
+                "Date of birth CANNOT be in the future"
+            )
+        return value
 
 
 class FollowSerializer(serializers.ModelSerializer):

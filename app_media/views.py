@@ -186,7 +186,9 @@ class ScheduledPostViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduledPostSerializer
 
     def get_queryset(self):
-        return ScheduledPost.objects.filter(author=self.request.user)
+        return ScheduledPost.objects.filter(
+            author=self.request.user, is_published=False
+        )
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)

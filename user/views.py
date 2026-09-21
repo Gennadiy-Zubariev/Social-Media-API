@@ -98,7 +98,7 @@ class ProfileViewSet(
 
     def get_queryset(self):
         queryset = Profile.objects.select_related("user").annotate(
-            followers_count=Count("user__followers"),
+            followers_count=Count("user__follower"),
             following_count=Count("user__following"),
         )
 
@@ -107,6 +107,53 @@ class ProfileViewSet(
             queryset = queryset.filter(nickname__icontains=nickname)
 
         return queryset
+
+    @action(detail=False, methods=["get", "put", "patch", "delete"])
+    def me(self, request):
+        """
+        GET    /api/profiles/me/  — мій профіль
+        PUT    /api/profiles/me/  — оновити повністю
+        PATCH  /api/profiles/me/  — часткове оновлення
+        DELETE /api/profiles/me/  — видалити профіль
+        """
+
+        try:
+            profile = self.get_queryset().get(user=request.user)
+        except Profile.DoesNotExist:
+            return Response(
+                {"error": "Profile not found. Use POST to create."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.method == "GET":
+            serializer = ProfileDetailSerializer(profile)
+            return Response(serializer.data)
+
+        if request.method == "DELETE":
+            profile.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = ProfileDetailSerializer(
+            profile,
+            data=request.data,
+            partial=request.method == "PATCH",
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["post"], url_path="create-profile")
+    def create_profile(self, request):
+        """POST /api/profiles/create-profile/"""
+        if hasattr(request.user, "profile"):
+            return Response(
+                {"error": "Profile already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = ProfileDetailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class FollowViewSet(
