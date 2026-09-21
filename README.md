@@ -60,6 +60,30 @@ celery -A social_media_api worker -l info
 celery -A social_media_api beat -l info
 ```
 
+## Наповнення бази тестовими даними
+
+Команда `seed_db` створює користувачів, профілі, підписки, пости з хештегами, лайки, коментарі та відкладені пости.
+
+```bash
+# у Docker
+docker compose exec web python manage.py seed_db
+
+# без Docker
+python manage.py seed_db
+```
+
+Параметри:
+
+| Параметр | Опис |
+|---|---|
+| `--users N` | кількість користувачів (за замовчуванням 10) |
+| `--posts N` | постів на користувача (за замовчуванням 3) |
+| `--clear` | спершу видалити раніше створені seed-дані |
+
+Приклад: `python manage.py seed_db --clear --users 20 --posts 5`.
+
+Seed-користувачі мають email `seed1@seed.example.com`, `seed2@seed.example.com`, ... і пароль `password123`. Для входу використовуйте `POST /api/user/auth/login/`. Команда видаляє (`--clear`) лише користувачів із доменом `seed.example.com`, ваші власні акаунти вона не чіпає.
+
 ## Змінні середовища (`.env`)
 
 | Змінна | Опис |
