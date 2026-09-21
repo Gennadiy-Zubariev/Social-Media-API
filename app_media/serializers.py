@@ -1,8 +1,7 @@
-import re
-
 from rest_framework import serializers
 
 from app_media.models import Comment, Hashtag, Post, ScheduledPost
+from app_media.utils import parse_hashtags
 
 
 class HashtagSerializer(serializers.ModelSerializer):
@@ -92,12 +91,9 @@ class PostCreateSerializer(serializers.ModelSerializer):
             "image",
         ]
 
-    def _parse_hashtags(self, content):
-        return re.findall(r"#(\w+)", content.lower())
-
     def create(self, validated_data):
         post = Post.objects.create(**validated_data)
-        tag_names = self._parse_hashtags(post.content)
+        tag_names = parse_hashtags(post.content)
         for name in tag_names:
             tag, _ = Hashtag.objects.get_or_create(name=name)
             post.hashtags.add(tag)
@@ -107,7 +103,7 @@ class PostCreateSerializer(serializers.ModelSerializer):
         instance = super().update(instance, validated_data)
         if "content" in validated_data:
             instance.hashtags.clear()
-            tag_names = self._parse_hashtags(instance.content)
+            tag_names = parse_hashtags(instance.content)
             for name in tag_names:
                 tag, _ = Hashtag.objects.get_or_create(name=name)
                 instance.hashtags.add(tag)

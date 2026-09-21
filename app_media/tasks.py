@@ -1,6 +1,8 @@
 from celery import shared_task
 from django.utils import timezone
 
+from app_media.utils import parse_hashtags
+
 
 @shared_task
 def publish_scheduled_posts():
@@ -18,13 +20,17 @@ def publish_scheduled_posts():
             content=scheduled.content,
             image=scheduled.image,
         )
-
+        tag_names = set(parse_hashtags(scheduled.content))
         if scheduled.hashtags:
-            for tag_name in scheduled.hashtags.split(","):
-                tag, _ = Hashtag.objects.get_or_create(
-                    name=tag_name.strip().lower()
-                )
-                post.hashtags.add(tag)
+            tag_names.update(
+                t.strip().lower().lstrip("#")
+                for t in scheduled.hashtags.split(",")
+                if t.strip()
+            )
+
+        for name in tag_names:
+            tag, _ = Hashtag.objects.get_or_create(name=name)
+            post.hashtags.add(tag)
 
         scheduled.is_published = True
         scheduled.save()
