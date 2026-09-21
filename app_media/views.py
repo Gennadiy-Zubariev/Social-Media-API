@@ -69,8 +69,8 @@ class PostViewSet(viewsets.ModelViewSet):
             Post.objects.select_related("author")
             .prefetch_related("hashtags", "comments__author")
             .annotate(
-                likes_count=Count("likes"),
-                comments_count=Count("comments"),
+                likes_count=Count("likes", distinct=True),
+                comments_count=Count("comments", distinct=True),
                 is_liked=Exists(
                     Like.objects.filter(
                         post=OuterRef("pk"),
@@ -118,7 +118,11 @@ class PostViewSet(viewsets.ModelViewSet):
         request=None,
         responses={200: LikeStatusSerializer, 201: LikeStatusSerializer},
     )
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated],
+    )
     def like(self, request, pk=None):
         post = self.get_object()
         like, created = Like.objects.get_or_create(
@@ -205,8 +209,8 @@ class LikedPostsViewSet(
             .select_related("author")
             .prefetch_related("hashtags")
             .annotate(
-                likes_count=Count("likes"),
-                comments_count=Count("comments"),
+                likes_count=Count("likes", distinct=True),
+                comments_count=Count("comments", distinct=True),
             )
         )
 

@@ -139,8 +139,8 @@ class ProfileViewSet(
 
     def get_queryset(self):
         queryset = Profile.objects.select_related("user").annotate(
-            followers_count=Count("user__follower"),
-            following_count=Count("user__following"),
+            followers_count=Count("user__follower", distinct=True),
+            following_count=Count("user__following", distinct=True),
         )
 
         nickname = self.request.query_params.get("nickname")
@@ -234,7 +234,8 @@ class FollowViewSet(
 
     Endpoints:
         GET    /api/user/follows/            — на кого я підписаний
-        POST   /api/user/follows/            — підписатися (передати following: user_id)
+        POST   /api/user/follows/            — підписатися
+                                             (передати following: user_id)
         DELETE /api/user/follows/{id}/       — відписатися
         GET    /api/user/follows/followers/   — хто підписаний на мене
 

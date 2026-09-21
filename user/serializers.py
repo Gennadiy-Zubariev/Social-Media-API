@@ -1,7 +1,6 @@
 import datetime
 
 from django.contrib.auth import authenticate, get_user_model
-from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from user.models import Follow, Profile
@@ -120,4 +119,13 @@ class FollowSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and value == request.user:
             raise serializers.ValidationError("You cannot follow yourself.")
+        if (
+            request
+            and Follow.objects.filter(
+                follower=request.user, following=value
+            ).exists()
+        ):
+            raise serializers.ValidationError(
+                "You are already following this user."
+            )
         return value
