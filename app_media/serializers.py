@@ -13,7 +13,7 @@ class HashtagSerializer(serializers.ModelSerializer):
 
 class CommentSerializer(serializers.ModelSerializer):
     author = serializers.CharField(source="author.email", read_only=True)
-    post = serializers.CharField(source="post.author", read_only=True)
+    post = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Comment

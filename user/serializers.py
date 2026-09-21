@@ -16,10 +16,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "email", "username", "password")
-        extra_kwargs = {
-            "username": {"required": False},
-        }
+        fields = ("id", "email", "password")
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
@@ -70,10 +67,6 @@ class ProfileListSerializer(serializers.ModelSerializer):
 
 class ProfileDetailSerializer(ProfileListSerializer):
     age = serializers.IntegerField(read_only=True)
-    username = serializers.CharField(
-        source="user.username",
-        read_only=True,
-    )
     followers_count = serializers.IntegerField(read_only=True)
     following_count = serializers.IntegerField(read_only=True)
 
@@ -81,7 +74,6 @@ class ProfileDetailSerializer(ProfileListSerializer):
         model = Profile
         fields = [
             "id",
-            "username",
             "email",
             "nickname",
             "date_of_birth",
@@ -103,11 +95,11 @@ class ProfileDetailSerializer(ProfileListSerializer):
 
 class FollowSerializer(serializers.ModelSerializer):
     follower = serializers.CharField(
-        source="follower.username",
+        source="follower.email",
         read_only=True,
     )
-    following_username = serializers.CharField(
-        source="following.username",
+    following_email = serializers.CharField(
+        source="following.email",
         read_only=True,
     )
 
@@ -117,7 +109,7 @@ class FollowSerializer(serializers.ModelSerializer):
             "id",
             "follower",
             "following",
-            "following_username",
+            "following_email",
             "created_at",
         ]
         extra_kwargs = {

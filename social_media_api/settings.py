@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework.authtoken",
+    "drf_spectacular",
     "user",
     "app_media",
 ]
@@ -140,6 +141,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 AUTH_USER_MODEL = "user.User"
@@ -147,6 +149,7 @@ AUTH_USER_MODEL = "user.User"
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Celery
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html
@@ -168,5 +171,16 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
-
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+# DRF-spectacular
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Social Media API",
+    "DESCRIPTION": "RESTful API for a social media platform",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "defaultModelRendering": "example",
+        "filter": True,
+    },
+    "COMPONENT_SPLIT_REQUEST": True,
+}

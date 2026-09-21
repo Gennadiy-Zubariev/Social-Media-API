@@ -1,5 +1,10 @@
 from django.db.models import Count, Exists, OuterRef
-from rest_framework import mixins, status, viewsets
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+)
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +20,20 @@ from app_media.serializers import (
 from user.permissions import IsOwnerOrReadOnly
 
 
+class LikeStatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=["liked", "unliked"])
+
+
+@extend_schema(tags=["Posts"])
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "hashtag", str, description="Фільтр за хештегом (без #)"
+            )
+        ]
+    )
+)
 class PostViewSet(viewsets.ModelViewSet):
     """
     Пости.
@@ -44,6 +63,8 @@ class PostViewSet(viewsets.ModelViewSet):
         return PostCreateSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Post.objects.none()
         queryset = (
             Post.objects.select_related("author")
             .prefetch_related("hashtags", "comments__author")
@@ -68,6 +89,7 @@ class PostViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
 
+    @extend_schema(responses=PostListSerializer(many=True))
     @action(detail=False, methods=["get"])
     def my(self, request):
         posts = self.get_queryset().filter(author=request.user)
@@ -78,6 +100,7 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer = PostListSerializer(posts, many=True)
         return Response(serializer.data)
 
+    @extend_schema(responses=PostListSerializer(many=True))
     @action(detail=False, methods=["get"])
     def feed(self, request):
         following_ids = request.user.following.values_list(
@@ -91,6 +114,10 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer = PostListSerializer(posts, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=None,
+        responses={200: LikeStatusSerializer, 201: LikeStatusSerializer},
+    )
     @action(detail=True, methods=["post"])
     def like(self, request, pk=None):
         post = self.get_object()
@@ -110,6 +137,17 @@ class PostViewSet(viewsets.ModelViewSet):
         )
 
 
+@extend_schema(
+    tags=["Comments"],
+    parameters=[
+        OpenApiParameter(
+            "post_pk",
+            int,
+            OpenApiParameter.PATH,
+            description="ID посту",
+        )
+    ],
+)
 class CommentViewSet(
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
@@ -134,6 +172,8 @@ class CommentViewSet(
     serializer_class = CommentSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Comment.objects.none()
         return Comment.objects.filter(
             post_id=self.kwargs["post_pk"]
         ).select_related("author")
@@ -145,6 +185,7 @@ class CommentViewSet(
         )
 
 
+@extend_schema(tags=["Liked"])
 class LikedPostsViewSet(
     mixins.ListModelMixin,
     viewsets.GenericViewSet,
@@ -157,6 +198,8 @@ class LikedPostsViewSet(
     serializer_class = PostListSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Post.objects.none()
         return (
             Post.objects.filter(likes__user=self.request.user)
             .select_related("author")
@@ -168,6 +211,7 @@ class LikedPostsViewSet(
         )
 
 
+@extend_schema(tags=["Scheduled"])
 class ScheduledPostViewSet(viewsets.ModelViewSet):
     """
     Відкладені пости (для Celery).
@@ -186,6 +230,8 @@ class ScheduledPostViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduledPostSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return ScheduledPost.objects.none()
         return ScheduledPost.objects.filter(
             author=self.request.user, is_published=False
         )

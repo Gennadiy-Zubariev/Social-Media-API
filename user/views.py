@@ -1,6 +1,13 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Count
-from rest_framework import mixins, status, viewsets
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -19,6 +26,7 @@ from user.serializers import (
 User = get_user_model()
 
 
+@extend_schema(tags=["Auth"])
 class AuthViewSet(viewsets.GenericViewSet):
     """
     Аутентифікація через Token.
@@ -39,8 +47,20 @@ class AuthViewSet(viewsets.GenericViewSet):
             return UserRegisterSerializer
         if self.action == "login":
             return LoginSerializer
-        return None
+        return serializers.Serializer
 
+    @extend_schema(
+        request=UserRegisterSerializer,
+        responses={
+            201: inline_serializer(
+                "RegisterResponse",
+                {
+                    "token": serializers.CharField(),
+                    "email": serializers.EmailField(),
+                },
+            )
+        },
+    )
     @action(detail=False, methods=["post"])
     def register(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -52,6 +72,14 @@ class AuthViewSet(viewsets.GenericViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(
+        request=LoginSerializer,
+        responses={
+            200: inline_serializer(
+                "LoginResponse", {"token": serializers.CharField()}
+            )
+        },
+    )
     @action(detail=False, methods=["post"])
     def login(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -60,6 +88,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         token, _ = Token.objects.get_or_create(user=user)
         return Response({"token": token.key})
 
+    @extend_schema(request=None, responses={204: None})
     @action(
         detail=False,
         methods=["post"],
@@ -70,6 +99,18 @@ class AuthViewSet(viewsets.GenericViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(tags=["Profiles"])
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "nickname",
+                str,
+                description="Пошук за нікнеймом (icontains)",
+            )
+        ]
+    )
+)
 class ProfileViewSet(
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -108,6 +149,24 @@ class ProfileViewSet(
 
         return queryset
 
+    @extend_schema(
+        methods=["GET"],
+        responses={
+            200: ProfileDetailSerializer,
+            404: OpenApiResponse(description="Profile not found"),
+        },
+    )
+    @extend_schema(
+        methods=["PUT"],
+        request=ProfileDetailSerializer,
+        responses=ProfileDetailSerializer,
+    )
+    @extend_schema(
+        methods=["PATCH"],
+        request=ProfileDetailSerializer,
+        responses=ProfileDetailSerializer,
+    )
+    @extend_schema(methods=["DELETE"], request=None, responses={204: None})
     @action(detail=False, methods=["get", "put", "patch", "delete"])
     def me(self, request):
         """
@@ -142,6 +201,13 @@ class ProfileViewSet(
         serializer.save()
         return Response(serializer.data)
 
+    @extend_schema(
+        request=ProfileDetailSerializer,
+        responses={
+            201: ProfileDetailSerializer,
+            400: OpenApiResponse(description="Profile already exists."),
+        },
+    )
     @action(detail=False, methods=["post"], url_path="create-profile")
     def create_profile(self, request):
         """POST /api/profiles/create-profile/"""
@@ -156,6 +222,7 @@ class ProfileViewSet(
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=["Follows"])
 class FollowViewSet(
     mixins.CreateModelMixin,
     mixins.DestroyModelMixin,
@@ -179,6 +246,8 @@ class FollowViewSet(
     serializer_class = FollowSerializer
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Follow.objects.none()
         return Follow.objects.filter(
             follower=self.request.user
         ).select_related("follower", "following")
@@ -186,6 +255,7 @@ class FollowViewSet(
     def perform_create(self, serializer):
         serializer.save(follower=self.request.user)
 
+    @extend_schema(responses=FollowSerializer(many=True))
     @action(detail=False, methods=["get"])
     def followers(self, request):
         followers = Follow.objects.filter(
