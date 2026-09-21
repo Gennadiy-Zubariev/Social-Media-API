@@ -1,0 +1,11 @@
+.venv
+.idea
+**__pycache__
+/media
+db.sqlite3
+*.pyc
+.env
+staticfiles/
+*.log
+CLAUDE.md
+celerybeat-schedule*
